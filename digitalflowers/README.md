@@ -15,7 +15,7 @@
 - ✨ **12 decoration overlays** — Sparkles, Drifting Petals, Glow, Hearts, Confetti
 - ✍️ **Personal message** up to 1,000 characters
 - 🔗 **Unique shareable slug** — `digitalflower-{timestamp}-{random}`
-- ⏳ **Auto-expires in 7 days** via MongoDB TTL index
+- ⏳ **Auto-expires in 7 days** via Firestore TTL policy
 - 🤖 **GitHub Actions** daily backup cleanup
 - 📱 Fully responsive on mobile, tablet, desktop
 
@@ -26,8 +26,7 @@
 | Layer | Technology |
 |-------|-----------|
 | Framework | Next.js 16 App Router |
-| Database | MongoDB Atlas (cloud) |
-| ORM | Mongoose |
+| Database | Firebase Firestore |
 | Styling | Tailwind CSS v4 + custom design system |
 | Animation | Framer Motion + CSS animations |
 | Slug | nanoid + timestamp (base-36) |

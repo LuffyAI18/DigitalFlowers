@@ -11,7 +11,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const deletedCount = deleteExpired();
+    const deletedCount = await deleteExpired();
 
     return NextResponse.json({
       success: true,

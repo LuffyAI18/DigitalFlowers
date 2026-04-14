@@ -1,11 +1,10 @@
 /**
- * Local JSON file-based storage for development (replaces MongoDB).
- * Stores bouquets in a JSON file so it works without any database setup.
- * For production, switch to MongoDB by setting USE_MONGODB=true in .env.local.
+ * Firestore-backed storage for DigitalFlowers bouquets.
+ * Each bouquet is a document in the "bouquets" collection, keyed by slug.
  */
 
-import fs from "fs";
-import path from "path";
+import { getDb } from "./firebase";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 export interface BouquetRecord {
   slug: string;
@@ -26,71 +25,97 @@ export interface BouquetRecord {
   shareUrl: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
-const DATA_FILE = path.join(DATA_DIR, "bouquets.json");
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function readAll(): BouquetRecord[] {
-  ensureDataDir();
-  if (!fs.existsSync(DATA_FILE)) {
-    return [];
-  }
-  try {
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
-    return JSON.parse(raw) as BouquetRecord[];
-  } catch {
-    return [];
-  }
-}
-
-function writeAll(records: BouquetRecord[]) {
-  ensureDataDir();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2), "utf-8");
-}
+const COLLECTION = "bouquets";
 
 // ── Public API ──
 
-export function createBouquet(data: Omit<BouquetRecord, "createdAt">): BouquetRecord {
-  const records = readAll();
+export async function createBouquet(
+  data: Omit<BouquetRecord, "createdAt">
+): Promise<BouquetRecord> {
+  const db = getDb();
   const record: BouquetRecord = {
     ...data,
     createdAt: new Date().toISOString(),
   };
-  records.push(record);
-  writeAll(records);
+
+  // Use slug as document ID for fast lookups
+  await db.collection(COLLECTION).doc(data.slug).set({
+    ...record,
+    // Store expiresAt as a Firestore Timestamp so TTL policy works
+    expiresAt: Timestamp.fromDate(new Date(record.expiresAt)),
+    createdAt: Timestamp.fromDate(new Date(record.createdAt)),
+  });
+
   return record;
 }
 
-export function findBouquetBySlug(slug: string): BouquetRecord | null {
-  const records = readAll();
-  const now = new Date();
-  const found = records.find(
-    (r) => r.slug === slug && r.published && new Date(r.expiresAt) > now
-  );
-  return found ?? null;
+export async function findBouquetBySlug(
+  slug: string
+): Promise<BouquetRecord | null> {
+  const db = getDb();
+  const doc = await db.collection(COLLECTION).doc(slug).get();
+
+  if (!doc.exists) return null;
+
+  const data = doc.data()!;
+
+  // Convert Firestore Timestamps back to ISO strings
+  const expiresAt =
+    data.expiresAt instanceof Timestamp
+      ? data.expiresAt.toDate().toISOString()
+      : data.expiresAt;
+  const createdAt =
+    data.createdAt instanceof Timestamp
+      ? data.createdAt.toDate().toISOString()
+      : data.createdAt;
+
+  // Check if expired or unpublished
+  if (!data.published || new Date(expiresAt) <= new Date()) {
+    return null;
+  }
+
+  return {
+    ...data,
+    expiresAt,
+    createdAt,
+  } as BouquetRecord;
 }
 
-export function incrementShareCount(slug: string): void {
-  const records = readAll();
-  const idx = records.findIndex((r) => r.slug === slug);
-  if (idx !== -1) {
-    records[idx].shareCount += 1;
-    writeAll(records);
-  }
+export async function incrementShareCount(slug: string): Promise<void> {
+  const db = getDb();
+  await db
+    .collection(COLLECTION)
+    .doc(slug)
+    .update({ shareCount: FieldValue.increment(1) });
 }
 
-export function deleteExpired(): number {
-  const records = readAll();
-  const now = new Date();
-  const kept = records.filter((r) => new Date(r.expiresAt) > now);
-  const deletedCount = records.length - kept.length;
-  if (deletedCount > 0) {
-    writeAll(kept);
-  }
-  return deletedCount;
+export async function deleteExpired(): Promise<number> {
+  const db = getDb();
+  const now = Timestamp.now();
+
+  const snapshot = await db
+    .collection(COLLECTION)
+    .where("expiresAt", "<=", now)
+    .get();
+
+  if (snapshot.empty) return 0;
+
+  // Batch delete (max 500 per batch)
+  const batches: FirebaseFirestore.WriteBatch[] = [];
+  let currentBatch = db.batch();
+  let count = 0;
+
+  snapshot.docs.forEach((doc, i) => {
+    currentBatch.delete(doc.ref);
+    count++;
+    if ((i + 1) % 500 === 0) {
+      batches.push(currentBatch);
+      currentBatch = db.batch();
+    }
+  });
+
+  batches.push(currentBatch);
+  await Promise.all(batches.map((b) => b.commit()));
+
+  return count;
 }
