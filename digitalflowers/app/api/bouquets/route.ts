@@ -77,9 +77,12 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    console.error("POST /api/bouquets error:", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    console.error("POST /api/bouquets error:", errMsg);
+    if (errStack) console.error("Stack:", errStack);
     return NextResponse.json(
-      { error: "Failed to create bouquet. Please try again." },
+      { error: "Failed to create bouquet. Please try again.", details: errMsg },
       { status: 500 }
     );
   }

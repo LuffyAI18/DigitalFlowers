@@ -12,13 +12,39 @@ function getFirebaseApp(): App {
 
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
   if (!projectId || !clientEmail || !privateKey) {
+    const missing = [
+      !projectId && "FIREBASE_PROJECT_ID",
+      !clientEmail && "FIREBASE_CLIENT_EMAIL",
+      !privateKey && "FIREBASE_PRIVATE_KEY",
+    ].filter(Boolean);
     throw new Error(
-      "Missing Firebase credentials. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in .env.local"
+      `Missing Firebase credentials: ${missing.join(", ")}. Set them in environment variables.`
     );
   }
+
+  // Handle all private key formats from different environments:
+  // - Vercel may store it with literal \n (escaped newlines)
+  // - Some envs may wrap it in extra quotes
+  // - The key MUST have actual newline characters to work
+  privateKey = privateKey.replace(/\\n/g, "\n");
+
+  // Remove wrapping quotes if present (e.g. "-----BEGIN..." or '-----BEGIN...')
+  if (
+    (privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+    (privateKey.startsWith("'") && privateKey.endsWith("'"))
+  ) {
+    privateKey = privateKey.slice(1, -1).replace(/\\n/g, "\n");
+  }
+
+  console.log("[Firebase] Initializing with project:", projectId);
+  console.log("[Firebase] Client email:", clientEmail);
+  console.log(
+    "[Firebase] Private key starts with:",
+    privateKey.substring(0, 30) + "..."
+  );
 
   return initializeApp({
     credential: cert({ projectId, clientEmail, privateKey }),
