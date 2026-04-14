@@ -12,7 +12,7 @@ export async function GET(
       return NextResponse.json({ error: "Slug is required" }, { status: 400 });
     }
 
-    const bouquet = findBouquetBySlug(slug);
+    const bouquet = await findBouquetBySlug(slug);
 
     if (!bouquet) {
       return NextResponse.json(
@@ -21,8 +21,8 @@ export async function GET(
       );
     }
 
-    // Increment share count
-    incrementShareCount(slug);
+    // Increment share count (fire-and-forget)
+    incrementShareCount(slug).catch(() => {});
 
     return NextResponse.json({ bouquet }, { status: 200 });
   } catch (error: unknown) {

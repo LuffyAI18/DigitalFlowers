@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Expiry: 7 days from now
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    const bouquet = createBouquet({
+    const bouquet = await createBouquet({
       slug,
       flowerType: flowerType || "rose",
       flowerColor: flowerColor || "classic-red",

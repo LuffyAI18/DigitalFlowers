@@ -1,0 +1,22 @@
+name: Daily Cleanup — Delete Expired Bouquets
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # Every day at midnight UTC
+  workflow_dispatch:        # Also allows manual trigger from GitHub UI
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete expired bouquets via API
+        run: |
+          curl -X GET "${{ secrets.BASE_URL }}/api/cleanup" \
+            -H "Authorization: Bearer ${{ secrets.CLEANUP_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+
+      - name: Log result
+        run: echo "Cleanup job completed at $(date -u)"
